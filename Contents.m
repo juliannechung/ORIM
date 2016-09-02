@@ -7,6 +7,11 @@
 % Authors:
 %   (c) Julianne Chung (e-mail: jmchung@vt.edu)            in March 2016
 %       Matthias Chung (e-mail: mcchung@vt.edu)
+%       
+% Versions:
+%   1.0 Initial release [March 2016]
+%   2.0 Small bugfixes and modifications to improve stability and 
+%       convergence of method [September 2016]
 %
 % These codes require the following packages:
 %         Regularization Tools package: Hansen. Regularization tools: A

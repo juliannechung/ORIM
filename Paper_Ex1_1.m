@@ -14,41 +14,41 @@
 %     www.mathworks.com/matlabcentral/fileexchange/52-regtools)
 %
 
-%% set up problem and generate matrix A, M, P and parameter eta
-rng(0)                                   % set random generator seed
-n = 1000;                                % dimension of problem m = n and p = n+1
-A = heat(n);                             % set matrix A (requires regtools)
-M = randn(n,n+1);                        % set matrix M with condition rank(M) = n
-P = randn(n,n);                          % set matrix P
-eta = 0.02; eta2 = eta^2;                % set noise level parameter
+%% set up problem generating matrix A, M, P and parameter etc
+rng(100)
+m = 1000; n = m; p = n+1;                % dimension of problem m > n and p >= n
+[A,b,x] = heat(n);                       % get heat matrix A (requires regtools)
+k = 50;                                  % choose max rank to k = 50
+M = randn(n,p); M(:,end) = 5*M(:,end);   % set matrix M with condition rank(M) = n
+P = randn(n,m);                          % set matrix P
+eta = 0.1; eta2 = eta^2;                 % set noise level parameter
 
-%% compute ORIM using update approach
-
-% set parameters for ORIM
-param = {'rMax',                 n; ...
-         'tolAlternating',    1e-6; ...  
-         'tolIterSolver',     1e-8; ...  
-         'tolRankUpdate',        0; ...  % set to zero to ensure all ranks are computed
-         'maxIterAlternating', 200};
-       
+%% set parameters for ORIM method
+param = {'rMax',                 k;  ...  % compute ranks up to k
+         'tolAlternating',    1e-6;  ...  % use alternating direction tolerance to 1e-6
+         'tolIterSolver',     1e-8;  ...  % use LSQR solver tolerance to 1e-8
+         'tolRankUpdate',        0;  ...  % set to zero to ensure all ranks are computed
+         'maxIterAlternating', 200}; ...  % set algorithmic parameters
+         
+%% compute ORIM using update approach        
 [X,Y,~,f_update] = orim(A,M(:,end),M(:,1:end-1),eta,P,param);
 Z_update = X*Y';
 
-%% compute ORIM matrix via Theorem 3.3, compare ORIM (update), TSVD, TTik, and ORIM (Theorem) for various ranks r
+%% compute TSVD, and TTik for various ranks r
 
-% define objective function 
-objfun = @(Zhat)norm(((Zhat+P)*A - eye(n))*M,'fro')^2 + eta2*norm(Zhat+P,'fro')^2;
 
-[U,S,V] = svd(A); s = diag(S); % compute SVD of A for TSVD solution
+objfun = @(Zhat)norm(((Zhat+P)*A- eye(n))*M,'fro')^2 + eta2*norm(Zhat+P,'fro')^2; % define objective function
 
-f_TSVD = zeros(n,1); f_TTIK = f_TSVD; % initialize 
+[U,S,V] = svd(A); s = diag(S); % compute SVD for TSVD solution
+
+f_TSVD = zeros(k,1); f_TTIK = f_TSVD; % initialize function values
 
 h = waitbar(0,'Computing ranks ...');
 
-% get results for each rank
-for r = 1:n
+% iterate over ranks
+for r = 1:k
   
-  waitbar(r/n)
+  waitbar(r/k)
   
   % TSVD for A
   Z_TSVD = V(:,1:r)*diag(1./s(1:r))*U(:,1:r)';
@@ -63,28 +63,46 @@ end
 
 close(h)
 
-%% compute ORIM from Theorem and ORIM_0
+%% compute ORIM and ORIM_0 via Theorem 3.3 and 
+fprintf('Computing ORIM using Theorem 3.3 ...                  ')
+[Zhat,f,Uh,Sh] = orimTheorem(A,M,P,eta2,k,objfun); fprintf('done.\n')
 
-fprintf('Computing ORIMs via Theorem 3.3 ... ')
-[Zhat,f,Uh,Sh] = orimTheorem(A,M,P,eta2,n,objfun);                                      % compute ORIM
-[Z,f_orim]     = orimTheorem(A,[M(1:n,1:n), zeros(n,1)],zeros(size(A')),eta2,n,objfun); % compute ORIM_0
-fprintf('done.\n')
+fprintf('Computing ORIM using Theorem 3.3 (P = 0, mu = 0) ...  ')
+[Z, f_orim] = orimTheorem(A,M(1:n,1:n),0,eta2,k,objfun); fprintf('done.\n')
 
-%% plot results and compute relative error between rank update approach and direct computation
+%% compute ORIM and ORIM_0 via Theorem 3.3 (P!=0 for different M)
+
+fprintf('Computing ORIM using Theorem 3.3 (M_0 = [In, 0]) ...  ')
+M_0 = eye(size(M));                                 % using M_0 = [I, 0]
+[~,f_update0_P,~,~] = orimTheorem(A,M_0,P,eta2,k,objfun); fprintf('done.\n')
+
+fprintf('Computing ORIM using Theorem 3.3 (M_1 = [In, mu]) ... ')
+M_1 = eye(size(M)); M_1(:,end) = M(:,end);          % M_1 = [I, mu]
+[~,f_update1_P,~,~] = orimTheorem(A,M_1,P,eta2,k,objfun); fprintf('done.\n')
+
+fprintf('Computing ORIM using Theorem 3.3 (M_2 = [M, mu])  ... ')
+M_2 = [M(1:n,1:n), zeros(n,1)];                     % M_2 = [M, 0]
+[~,f_update2_P,~,~] = orimTheorem(A,M_2,P,eta2,k,objfun); fprintf('done.\n')
+
+%% plot results
 
 figure(1)
-plot(f_TSVD,':',  'LineWidth',2,'color',[0.9290 0.6940 0.1250]), hold on,
-plot(f_TTIK,'--', 'LineWidth',2,'color',[0.4940 0.1840 0.5560])
-plot(f_orim,'-.', 'LineWidth',2,'color',[0.4660 0.6740 0.1880])
-plot(f_update,'-','LineWidth',2,'color',[0      0.4470 0.7410])
 
-fontSize = 18;
-hLegend  = legend('TSVD', 'TTik', 'ORIM_0', 'ORIM'); set(hLegend,'FontSize',fontSize);
+plot(f_TSVD,'s-', 'LineWidth',2,'color',[0.9290 0.6940 0.1250]), hold on,
+plot(f_TTIK,'d-', 'LineWidth',2,'color',[0.4940 0.1840 0.5560])
+plot(f_orim,'o-', 'LineWidth',2,'color',[0.4660 0.6740 0.1880])
+
+plot(f_update0_P,'-',   'LineWidth',2,'color',[0.4940 0.1840 0.5560])
+plot(f_update1_P,'--',  'LineWidth',2,'color',[0      0.4470 0.7410])
+plot(f_update2_P,'m-.', 'LineWidth',2,'color',[0.4660 0.6740 0.1880])
+plot(f,'k:','LineWidth',2)
+
+fontSize = 12;
+hLegend = legend('TSVD', 'TTik', 'ORIM$_0$', 'ORIM update, $\mathbf{M}_{(0)}$', 'ORIM update, $\mathbf{M}_{(1)}$', 'ORIM update, $\mathbf{M}_{(2)}$','ORIM update, $\mathbf{M}_{(3)}$');
+set(hLegend,'FontSize',fontSize,'Interpreter','Latex','Location','northeastoutside');
 xlabel('rank $r$','Interpreter','Latex','FontSize',fontSize)
-ylabel('objective function $f(\mathbf{\widehat Z}_r)$','Interpreter','Latex','FontSize',fontSize)
+ylabel('objective function $f(\mathbf{Z}_r)$','Interpreter','Latex','FontSize',fontSize)
 set(gca,'FontSize',fontSize);
 set(gca,'FontName','Times New Roman')
 axis([1 50 9.2e5 1.28e6])  
 box off
-
-fprintf('The maximal absolute relative error is %1.4e \n',max(abs(f-f_update)./f))

@@ -137,14 +137,11 @@ while 1
     % normalize x
     x = x/norm(x);
     
-    % orthogonalize
-    x = x - X*(X'*x);
-    
-    % pre-compute M'*x and P'*x
-    Mx = M'*x; Px = P'*x;
+    % pre-compute M'*x and (P' + Y*X')*x
+      Mx = M'*x; PpXYx = P'*x + Y(:,1:r-1)*(X(:,1:r-1)'*x);
     
     % compute optimal y
-    [y, ~, ~] = lsqr(objectFcn, [Mx - AM'*Px; -eta*Px], tolIterSolver);
+    [y, ~, ~] = lsqr(objectFcn, [Mx - AM'*PpXYx; -eta*PpXYx], tolIterSolver); 
     
     % pre-computes for optimal x in next iteration
     yAM = (AM'*y)';
@@ -152,7 +149,7 @@ while 1
     yAMMAyeta2yy = y'*AMMAyeta2y;
     
     % compute update on objective function
-    f = yAMMAyeta2yy + 2*(AMMAyeta2y'*Px) - 2*(yAM*Mx) + fprev;
+    f = yAMMAyeta2yy + 2*(AMMAyeta2y'*PpXYx) - 2*(yAM*Mx) + fprev;
     
     % check stopping criteria for alternating directions
     STOP1 = abs(f - fOld) < tolAlternating*f;                                   % relative improvement in f
@@ -196,7 +193,7 @@ while 1
   if STOP1 || STOP2
     if STOP2 && ~STOP1
       warning('Matlab:orim:maxRank',...
-        'Maximal rank reached. Improving on preconditioner still possible.')
+        'Maximal rank reached. Improving on ORIM matrix still possible.')
     end
     if (strcmp(display, 'iter') || strcmp(display,'rank')) &&  (STOP1 && ~STOP2)
       fprintf('Rank improvement tolerance %1.2e reached at rank = %d.\n',tolRankUpdate,r)
